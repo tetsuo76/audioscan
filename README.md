@@ -115,6 +115,7 @@ cd audioscan
 ### Build
 
 ```bash
+go build -o audioscan
 ```
 
 ### Run
