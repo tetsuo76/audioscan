@@ -111,18 +111,19 @@ func main() {
 	flag.Usage = func() {
 		fmt.Println(`audioscan — Audio Library Quality Scanner
 
-audioscan v1.0.0 - Scan your music collecion and get a quality breakdown.
+audioscan v1.1.0 - Scan your music collecion and get a quality breakdown.
 
 Usage:
-  audioscan [options] /path/to/music
+  audioscan [options] /path/to/music [more paths...]
 
 Examples:
-  audioscan ~/Music
-  audioscan -threads 8 ~/Music
-  audioscan -json report.json -csv report.csv ~/Music
-  audioscan -ignore ".git,Trash,@eaDir" ~/Music
-  audioscan -follow-symlinks ~/Music
-  audioscan --color ~/Music
+  audioscan ~/Music /mnt/music /home/user/OtherMusic
+  audioscan /home/user1/music /home/user2/music /mnt/music/musicII
+  audioscan -threads 8 ~/Music /mnt/music
+  audioscan -json report.json -csv report.csv ~/Music /home/user/OtherMusic
+  audioscan -ignore ".git,Trash,@eaDir" ~/Music 
+  audioscan -follow-symlinks ~/Music 
+  audioscan --color ~/Music 
 
 Keyboard:
   SPACE    Pause/resume scanning while running
@@ -157,12 +158,12 @@ Options:`)
 
 	flag.Parse()
 
-	if flag.NArg() < 1 {
+	roots := flag.Args()
+	if len(roots) < 1 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	root := flag.Arg(0)
 	ignoreDirs := parseIgnoreDirs(*ignoreArg)
 
 	if _, err := exec.LookPath("ffprobe"); err != nil {
@@ -175,7 +176,7 @@ Options:`)
 		os.Exit(1)
 	}
 
-	files, err := collectAudioFiles(root, ignoreDirs, *followSymlinks)
+	files, err := collectAudioFiles(roots, ignoreDirs, *followSymlinks)
 	if err != nil {
 		fmt.Println("Scan error:", err)
 		os.Exit(1)
@@ -242,7 +243,7 @@ Options:`)
 	}
 
 	report := Report{
-		Root:         root,
+		Root:         strings.Join(roots, ", "),
 		QualityStats: map[string]int{},
 		ArtistStats:  map[string]int{},
 		AlbumStats:   map[string]int{},
@@ -411,7 +412,7 @@ func waitWhilePaused(pauseState *PauseState) {
 	}
 }
 
-func collectAudioFiles(root string, ignoreDirs map[string]bool, followSymlinks bool) ([]string, error) {
+func collectAudioFiles(roots []string, ignoreDirs map[string]bool, followSymlinks bool) ([]string, error) {
 	var files []string
 	visited := map[string]bool{}
 
@@ -486,8 +487,13 @@ func collectAudioFiles(root string, ignoreDirs map[string]bool, followSymlinks b
 		return nil
 	}
 
-	err := walk(root)
-	return files, err
+	for _, root := range roots {
+		if err := walk(root); err != nil {
+			return nil, err
+		}
+	}
+
+	return files, nil
 }
 
 func analyzeFile(path string) (TrackInfo, error) {
@@ -766,7 +772,12 @@ func progressPrinter(total int, processed *int64, pauseState *PauseState, done <
 }
 
 func printReport(report Report, useColor bool, scanDuration time.Duration) {
-	fmt.Printf("Directory: %s\n\n", report.Root)
+	header := "Directory"
+	if strings.Contains(report.Root, ", ") {
+		header = "Directories"
+	}
+
+	fmt.Printf("%s: %s\n\n", header, report.Root)
 
 	keys := make([]string, 0, len(report.QualityStats))
 	for k := range report.QualityStats {
